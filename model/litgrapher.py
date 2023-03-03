@@ -53,22 +53,18 @@ class LitGrapher(pl.LightningModule):
                  focal_loss_gamma,
                  eval_dir,
                  lr,
+                 node_token,
+                 edge_token,
+                 no_edge_token
                  ):
         super().__init__()
         self.save_hyperparameters()
 
-        model = Grapher(transformer_class=transformer_class,
-                        transformer_name=transformer_name,
-                        cache_dir=cache_dir,
-                        max_nodes=max_nodes,
-                        edges_as_classes=edges_as_classes,
-                        node_sep_id=node_sep_id,
-                        default_seq_len_edge=default_seq_len_edge,
-                        num_classes=num_classes,
-                        dropout_rate=dropout_rate,
-                        num_layers=num_layers,
-                        vocab_size=vocab_size,
-                        bos_token_id=bos_token_id)
+        model = Grapher(
+            transformer_class=transformer_class,
+            transformer_name=transformer_name,
+            cache_dir=cache_dir
+        )
 
         self.model = model
         self.criterion = {'ce': nn.CrossEntropyLoss(reduction='none'), 'focal': FocalLoss(focal_loss_gamma)}
@@ -88,25 +84,27 @@ class LitGrapher(pl.LightningModule):
         self.noedge_id = noedge_id
         self.eval_dir=eval_dir
         self.lr = lr
+        self.node_token = node_token
+        self.edge_token = edge_token
+        self.no_edge_token = no_edge_token
 
     def training_step(self, batch, batch_idx):
 
         # target_nodes: batch_size X seq_len_node
         # target_edges: num_nodes X num_nodes X batch_size X seq_len_edge [FULL]
         # target_edges: batch_size X num_nodes X num_nodes [CLASSES]
-        text_input_ids, text_input_attn_mask, target_nodes, target_nodes_mask, target_edges = batch
+        text_input_ids, text_input_attn_mask, target_edges, target_edges_mask = batch
 
         # logits_nodes: batch_size X seq_len_node X vocab_size
         # logits_edges: num_nodes X num_nodes X batch_size X seq_len_edge X vocab_size [FULL]
         # logits_edges: num_nodes X num_nodes X batch_size X num_classes [CLASSES]
-        logits_nodes, logits_edges= self.model(text_input_ids,
-                                               text_input_attn_mask,
-                                               target_nodes,
-                                               target_nodes_mask,
-                                               target_edges)
-
-        loss = compute_loss(self.criterion, logits_nodes, logits_edges, target_nodes,
-                            target_edges, self.edges_as_classes, self.focal_loss_gamma)
+        logits_edges= self.model(
+            text_input_ids,
+            text_input_attn_mask,
+            target_edges,
+            target_edges_mask
+        )
+        loss = compute_loss(self.criterion, logits_edges, target_edges, target_edges_mask)
 
         self.log('train_loss', loss, on_step=True, on_epoch=True, logger=True, sync_dist=True, batch_size=text_input_ids.size(0))
 
@@ -117,39 +115,41 @@ class LitGrapher(pl.LightningModule):
         iteration = self.global_step
         rank = self.global_rank
 
-        text_input_ids, text_input_attn_mask, target_nodes, target_nodes_mask, target_edges = batch
+        text_input_ids, text_input_attn_mask, target_edge_ids, _ = batch
 
-        logits_nodes, seq_nodes, logits_edges, seq_edges = self.model.sample(text_input_ids, text_input_attn_mask)
+        logits_edges, generated_edge_ids = self.model.sample(text_input_ids, text_input_attn_mask)
 
-        text_dec = decode_text(self.tokenizer, text_input_ids, self.bos_token_id, self.eos_token_id)
+        target_text_dec = decode_text(
+            self.tokenizer,
+            target_edge_ids,
+            self.bos_token_id,
+            self.eos_token_id
+        )
+        pred_text_dec = decode_text(
+            self.tokenizer,
+            generated_edge_ids,
+            self.bos_token_id,
+            self.eos_token_id
+        )
 
-        TB_str = []
+        dec_graph_target = decode_graph(
+            target_text_dec,
+            self.node_token,
+            self.edge_token,
+            self.no_edge_token
+        )
 
-        dec_target = decode_graph(self.tokenizer, self.edge_classes, target_nodes, target_edges, self.edges_as_classes,
-                                  self.node_sep_id, self.max_nodes, self.noedge_cl, self.noedge_id,
-                                  self.bos_token_id, self.eos_token_id)
-
-        dec_pred = decode_graph(self.tokenizer, self.edge_classes, seq_nodes, seq_edges, self.edges_as_classes,
-                                self.node_sep_id, self.max_nodes, self.noedge_cl, self.noedge_id,
-                                self.bos_token_id, self.eos_token_id)
-
-        if batch_idx == 0:
-            for b_i in range(len(text_dec)):
-                # ---- ground truth ----
-                gt = '<br/>'.join('-->'.join(tri) for tri in dec_target[b_i])
-
-                # ---- predicted  -------
-                pr = '<br/>'.join('-->'.join(tri) for tri in dec_pred[b_i])
-
-                strng = f'{b_i}<br/>' + text_dec[b_i] + '<br/>' \
-                        + '-' * 40 + 'target' + '-' * 40 + '<br/>' + gt + '<br/>' \
-                        + '-' * 40 + 'predicted' + '-' * 20 + '<br/>' + pr + '<br/>'
-                TB_str.append(strng)
-
-        decodes = {'text_dec': text_dec, 'dec_target': dec_target, 'dec_pred': dec_pred}
-
-        for i, tb_str in enumerate(TB_str):
-            self.logger.experiment.add_text(f'{split}_{rank}/{i}', tb_str, iteration)
+        dec_graph_pred = decode_graph(
+            pred_text_dec,
+            self.node_token,
+            self.edge_token,
+            self.no_edge_token
+        )
+        decodes = {
+            'text_dec': pred_text_dec,
+            'dec_target': dec_graph_target,
+            'dec_pred': dec_graph_pred
+        }
 
         return decodes
 

@@ -1,40 +1,30 @@
 import torch
 import networkx as nx
+import itertools
 from WebNLG_Text_to_triples import Evaluation_script_json
 import os
 from misc.rdf import save_webnlg_rdf
 import json
+from typing import Callable, Dict, List
+from transformers import T5Tokenizer
 
 failed_node = 'failed node'
 failed_edge = 'failed edge'
 nonode_str = '__no_node__'
 
 
-def compute_loss(criterion, logits_nodes, logits_edges, target_nodes, target_edges, edges_as_classes, focal_loss_gamma):
-
+def compute_loss(
+    criterion: Dict[str, Callable],
+    logits_graphs: torch.Tensor,
+    serialized_graphs_token_ids: torch.Tensor,
+    padding_mask: torch.Tensor
+) -> torch.Tensor:
     # --------- Node Loss ---------
-    # shift forward 1 step to create labels
-    labels = torch.cat([target_nodes[:, 1:], torch.zeros_like(target_nodes[:, -2:-1])], 1)
-
-    loss_nodes = criterion['ce'](logits_nodes.transpose(1,2), labels).mean()
-
-    # --------- Edge Loss --------
-    if edges_as_classes:
-        target_edges = target_edges.permute(2, 0, 1)
-        logits_edges = logits_edges.permute(2, 3, 0, 1)
-        if focal_loss_gamma:
-            loss_edges = criterion['focal'](logits_edges, target_edges).mean()
-        else:
-            loss_edges = criterion['ce'](logits_edges, target_edges).mean()
-
-    else:  # full
-        target_edges = target_edges.permute(2, 0, 1, 3)
-        logits_edges = logits_edges.permute(2, 4, 0, 1, 3)
-        loss_edges = criterion['ce'](logits_edges, target_edges).mean()
-
-    loss = loss_nodes + loss_edges
-
-    return loss
+    # predicts the next token in the sequence
+    return criterion['ce'](
+        logits_graphs[:, :-1].transpose(1,2),
+        torch.where(padding_mask == 0, -100, serialized_graphs_token_ids)[:, 1:]
+    ).mean()
 
 
 def decode(cand, bos_token_id, eos_token_id, tokenizer, failed=failed_node):
@@ -52,101 +42,44 @@ def decode(cand, bos_token_id, eos_token_id, tokenizer, failed=failed_node):
     return s
 
 
-def decode_text(tokenizer, text_input_ids, bos_token_id, eos_token_id):
+def decode_text(
+    tokenizer: T5Tokenizer,
+    text_input_ids: torch.Tensor,
+    bos_token_id: int,
+    eos_token_id: int
+) -> List[str]:
 
     text_decoded = []
 
     for text in text_input_ids:
         bos_mask = (text == bos_token_id).nonzero(as_tuple=False)
         eos_mask = (text == eos_token_id).nonzero(as_tuple=False)
-        text_dec = tokenizer._decode(text[bos_mask[0] + 1:eos_mask[0]])
+        try:
+            text_dec = tokenizer._decode(text[bos_mask[0] + 1:eos_mask[0]])
+        except:
+            text_dec = ""
         text_decoded.append(text_dec)
-
     return text_decoded
 
 
-def decode_graph(tokenizer, edge_classes, bnodes, bedges, edges_as_classes, node_sep_id,
-                 max_nodes, noedge_cl, noedge_id, bos_token_id, eos_token_id):
-
-    if edges_as_classes:
-        bedges = bedges.permute(2, 0, 1)
-    else:
-        bedges = bedges.permute(2, 0, 1, 3)
-
-    # bnodes: batch_size X num_nodes X seq_len_node
-    # bedges: batch_size X num_nodes X num_nodes X seq_len_edge [FULL]
-    # bedges: batch_size X num_nodes X num_nodes [CLASSES]
-
-    triples_decoded = []
-
-    for b_ind, (nodes, edges) in enumerate(zip(bnodes, bedges)):
-
-        G = nx.DiGraph()
-
-        nodes_decoded = []
-        all_nodes = tokenizer._decode(nodes).split(tokenizer._decode(node_sep_id))
-
-        for n in all_nodes:
-            s = n.replace('<pad>', '').replace('</s>', '').strip()
-            # empty or white space
-            if not s or not s.strip():
-                s = failed_node
-            nodes_decoded.append(s)
-
-        nodes_decoded = nodes_decoded[:max_nodes]
-        nodes_decoded += (max_nodes - len(nodes_decoded)) * [failed_node]
-
-        if edges_as_classes:
-            noedge_mask = ~(bedges == noedge_cl)
-            for i in range(max_nodes):
-                for j in range(max_nodes):
-                    if i == j: continue
-                    if noedge_mask[b_ind][i, j] > 0:
-                        edge = edges[i, j].detach()
-
-                        if edge == noedge_cl:
-                            s = failed_edge
-                        else:
-                            s = edge_classes[edge]
-
-                        if nodes_decoded[i] != failed_node and nodes_decoded[j] != failed_node and s != failed_edge and \
-                           nonode_str not in nodes_decoded[i] and nonode_str not in nodes_decoded[j]:
-                            G.add_edge(nodes_decoded[i], nodes_decoded[j], edge=s)
-        else:  # full
-            noedge_mask = 1 - torch.sum(bedges == noedge_id, -1)
-            for i in range(max_nodes):
-                for j in range(max_nodes):
-                    if i == j: continue
-                    if noedge_mask[b_ind][i, j] > 0:
-                        edge = edges[i, j]
-
-                        s = decode(edge, bos_token_id, eos_token_id, tokenizer, failed_edge)
-
-                        # empty or white space
-                        if not s or not s.strip():
-                            s = failed_edge
-
-                        if failed_node not in nodes_decoded[i] and failed_node not in nodes_decoded[j] and s != failed_edge and nonode_str not in nodes_decoded[i] and nonode_str not in nodes_decoded[j]:
-                            G.add_edge(nodes_decoded[i], nodes_decoded[j], edge=s)
-
-        # make sure there are at least 2 nodes and 1 edge
-        if nx.is_empty(G):
-            node1 = nodes_decoded[0] if len(nodes_decoded)>0 else failed_node
-            node2 = nodes_decoded[1] if len(nodes_decoded)>1 else failed_node
-            G.add_edge(node1, node2, edge=failed_edge)
-
-        tri = []
-        for ind, (u, v, d) in enumerate(G.edges(data=True)):
-
-            # decode up to 8 paths, discard others (because eval fails with too many paths)
-            if ind >= 8:
-                break
-
-            tri.append([u, d['edge'], v])
-
-        triples_decoded.append(tri)
-
-    return triples_decoded
+def decode_graph(
+    edges_text_list: List[str],
+    node_token: str,
+    edge_token: str,
+    no_edge_token: str
+) -> List[List[str]]:
+    triples_decoded_list = []
+    for edges_text in edges_text_list:
+        triples_decoded = []
+        for edge in edges_text.split(no_edge_token):
+            if edge == '':
+                continue
+            split_edge = [text.split(edge_token) for text in edge.split(node_token) if text != '']
+            split_edge = list(itertools.chain.from_iterable(split_edge))
+            split_edge = [text for text in split_edge if text != '']
+            triples_decoded.append(split_edge)
+        triples_decoded_list.append(triples_decoded)
+    return triples_decoded_list
 
 
 def compute_scores(hyp, ref, iteration, eval_dir, split, rank):

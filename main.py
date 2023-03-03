@@ -25,7 +25,6 @@ def main(args):
         checkpoint_model_path = os.path.join(args.checkpoint_dir, f"model-step={args.checkpoint_model_id}.ckpt")
 
     if args.run == 'train':
-
         dm = GraphDataModule(tokenizer_class=T5Tokenizer,
                              tokenizer_name=args.pretrained_model,
                              cache_dir=args.cache_dir,
@@ -49,40 +48,51 @@ def main(args):
             every_n_train_steps=args.checkpoint_step_frequency,
         )
 
-        grapher = LitGrapher(transformer_class=T5ForConditionalGeneration,
-                             transformer_name=args.pretrained_model,
-                             tokenizer=dm.tokenizer,
-                             cache_dir=args.cache_dir,
-                             max_nodes=args.max_nodes,
-                             max_edges=args.max_edges,
-                             edges_as_classes=args.edges_as_classes,
-                             default_seq_len_edge=args.default_seq_len_edge,
-                             num_classes=len(dm.dataset_train.edge_classes),
-                             dropout_rate=args.dropout_rate,
-                             num_layers=args.num_layers,
-                             vocab_size=len(dm.tokenizer.get_vocab()),
-                             bos_token_id=dm.tokenizer.pad_token_id,
-                             eos_token_id=dm.tokenizer.eos_token_id,
-                             nonode_id=dm.tokenizer.convert_tokens_to_ids('__no_node__'),
-                             noedge_id=dm.tokenizer.convert_tokens_to_ids('__no_edge__'),
-                             node_sep_id=dm.tokenizer.convert_tokens_to_ids('__node_sep__'),
-                             noedge_cl=len(dm.dataset_train.edge_classes) - 1,
-                             edge_classes=dm.dataset_train.edge_classes,
-                             focal_loss_gamma=args.focal_loss_gamma,
-                             eval_dir=args.eval_dir,
-                             lr=args.lr)
+        grapher = LitGrapher(
+            transformer_class=T5ForConditionalGeneration,
+            transformer_name=args.pretrained_model,
+            tokenizer=dm.tokenizer,
+            cache_dir=args.cache_dir,
+            max_nodes=args.max_nodes,
+            max_edges=args.max_edges,
+            edges_as_classes=args.edges_as_classes,
+            default_seq_len_edge=args.default_seq_len_edge,
+            num_classes=len(dm.dataset_train.edge_classes),
+            dropout_rate=args.dropout_rate,
+            num_layers=args.num_layers,
+            vocab_size=len(dm.tokenizer.get_vocab()),
+            bos_token_id=dm.tokenizer.pad_token_id,
+            eos_token_id=dm.tokenizer.eos_token_id,
+            nonode_id=dm.tokenizer.convert_tokens_to_ids('__no_node__'),
+            noedge_id=dm.tokenizer.convert_tokens_to_ids('__no_edge__'),
+            node_sep_id=dm.tokenizer.convert_tokens_to_ids('__node_sep__'),
+            noedge_cl=len(dm.dataset_train.edge_classes) - 1,
+            edge_classes=dm.dataset_train.edge_classes,
+            focal_loss_gamma=args.focal_loss_gamma,
+            eval_dir=args.eval_dir,
+            lr=args.lr,
+            node_token=dm.node_token,
+            edge_token=dm.edge_token,
+            no_edge_token=dm.no_edge_token
+        )
 
         if not os.path.exists(checkpoint_model_path):
             checkpoint_model_path = None
 
-        trainer = pl.Trainer.from_argparse_args(args,
-                                                logger=TB,
-                                                callbacks=[checkpoint_callback, RichProgressBar(10)])
+        trainer = pl.Trainer.from_argparse_args(
+            args,
+            logger=TB,
+            callbacks=[checkpoint_callback, RichProgressBar(10)],
+            val_check_interval=100,
+            check_val_every_n_epoch=1,
+            devices=[0,1,2,3],
+            accelerator="gpu"
+        )
 
         dm.setup(stage='validate')
 
         trainer.fit(model=grapher, datamodule=dm, ckpt_path=checkpoint_model_path)
-        
+
     elif args.run == 'test':
 
         assert os.path.exists(checkpoint_model_path), 'Provided checkpoint does not exists, cannot run the test'
@@ -102,7 +112,7 @@ def main(args):
 
         dm.setup(stage='test')
 
-        trainer = pl.Trainer.from_argparse_args(args, logger=TB)
+        trainer = pl.Trainer.from_argparse_args(args, logger=TB, devices=[3], accelerator="gpu")
 
         trainer.test(grapher, datamodule=dm)
 
@@ -116,7 +126,7 @@ def main(args):
         tokenizer.add_tokens('__no_node__')
         tokenizer.add_tokens('__no_edge__')
         tokenizer.add_tokens('__node_sep__')
-        
+
         text_tok = tokenizer([args.inference_input_text],
                              add_special_tokens=True,
                              padding=True,
@@ -129,14 +139,14 @@ def main(args):
         dec_graph = decode_graph(tokenizer, grapher.edge_classes, seq_nodes, seq_edges, grapher.edges_as_classes,
                                 grapher.node_sep_id, grapher.max_nodes, grapher.noedge_cl, grapher.noedge_id,
                                 grapher.bos_token_id, grapher.eos_token_id)
-        
+
         graph_str = ['-->'.join(tri) for tri in dec_graph[0]]
-        
+
         print(f'Generated Graph: {graph_str}')
-        
-    
+
+
 if __name__ == "__main__":
-    
+
     # Parsing arguments
     parser = argparse.ArgumentParser(description='Arguments')
 
