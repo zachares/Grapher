@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "Grapher"
+version = "0.1.0"
+description = "Text to knowledge graph generation"
+authors = ["Igor Melnyk"]
+
+[tool.poetry.dependencies]
+python = "~3.9"
+
+bs4 = {version="^0.0.1"}
+nervaluate = {version="^0.1.8"}
+networkx = {version"^3.0"}
+nltk = {version="^3.8.1"}
+pytorch_lightning = {version="^1.9.3"}
+rich = {version="^13.3.1"}
+scikit-learn = {version="^1.2.1"}
+sentencepiece = {version="^0.1.97"}
+regex = {version="^2022.10.31"}
+tensorboard = {version="^2.12.0"}
+tensorboardX = {version="^2.6"}
+transformers = {version="^4.26.1"}
+
+
+[build-system]
+requires = ["poetry-core>=1.1.0b3"]
+build-backend = "poetry.core.masonry.api"

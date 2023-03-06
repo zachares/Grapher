@@ -29,34 +29,35 @@ class FocalLoss(nn.modules.loss._WeightedLoss):
 
         return focal_loss
 
-class LitGrapher(pl.LightningModule):
-    def __init__(self,
-                 transformer_class,
-                 transformer_name,
-                 tokenizer,
-                 cache_dir,
-                 max_nodes,
-                 max_edges,
-                 edges_as_classes,
-                 default_seq_len_edge,
-                 num_classes,
-                 dropout_rate,
-                 num_layers,
-                 vocab_size,
-                 bos_token_id,
-                 eos_token_id,
-                 nonode_id,
-                 noedge_id,
-                 node_sep_id,
-                 noedge_cl,
-                 edge_classes,
-                 focal_loss_gamma,
-                 eval_dir,
-                 lr,
-                 node_token,
-                 edge_token,
-                 no_edge_token
-                 ):
+class LitText2SerializedGraphLLM(pl.LightningModule):
+    def __init__(
+        self,
+        transformer_class,
+        transformer_name,
+        tokenizer,
+        cache_dir,
+        max_nodes,
+        max_edges,
+        edges_as_classes,
+        default_seq_len_edge,
+        num_classes,
+        dropout_rate,
+        num_layers,
+        vocab_size,
+        bos_token_id,
+        eos_token_id,
+        nonode_id,
+        noedge_id,
+        node_sep_id,
+        noedge_cl,
+        edge_classes,
+        focal_loss_gamma,
+        eval_dir,
+        lr,
+        node_token,
+        edge_token,
+        no_edge_token,
+    ):
         super().__init__()
         self.save_hyperparameters()
 
