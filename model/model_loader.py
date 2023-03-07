@@ -31,6 +31,7 @@ def init_and_load_model(
     }
     if load_model:
         checkpoint_model_path = os.path.join(model_dir, 'last.ckpt')
+        print(f"Loading model from {checkpoint_model_path}")
         model = LitText2SerializedGraphLLM.load_from_checkpoint(
             checkpoint_model_path,
             **model_hyperparameters

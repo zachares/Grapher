@@ -53,7 +53,7 @@ def main(args):
         val_dataloader = init_dataloader(
             tokenizer=tokenizer,
             split_name='dev',
-            shuffle_data=True,
+            shuffle_data=False,
             data_path=args.output_path,
             batch_size=args.batch_size,
             num_data_workers=args.num_data_workers
@@ -75,7 +75,12 @@ def main(args):
             devices=args.gpu_devices,
             accelerator="gpu"
         )
-        trainer.fit(model=model, train_dataloaders=train_dataloader, val_dataloaders=val_dataloader)
+        trainer.fit(
+            model=model,
+            train_dataloaders=train_dataloader,
+            val_dataloaders=val_dataloader,
+            ckpt_path=None
+        )
 
     elif args.run == 'test':
         test_dataloader = init_dataloader(
@@ -106,7 +111,7 @@ if __name__ == "__main__":
     parser.add_argument('--language-model-name', type=str, default='t5-large')
     parser.add_argument('--model-dir', type=str, required=True)
     parser.add_argument('--model-name', type=str, required=True)
-    parser.add_argument("--load-model", type=bool, default=False)
+    parser.add_argument("--load-model", type=bool, default=True)
 
     parser.add_argument("--dataset", type=str, default='webnlg')
     parser.add_argument('--version', type=str, default='0')

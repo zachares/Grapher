@@ -31,7 +31,7 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
     def training_step(
         self,
         batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        batch_idx: int # required for pytorch interface
+        batch_idx: int # required for pytorch lightning interface
     ) -> torch.Tensor:
         """ Performs a forward pass through the model and computes the loss for a batch of
             text graph pairs in the trainings set
@@ -98,6 +98,7 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
             itertools.chain.from_iterable([out['graphs_generated'] for out in outputs])
         )
         # make sure number of paths is smaller than 10 (legacy hack from Grapher Project)
+        import pdb;pdb.set_trace()
         graphs_ground_truth = [tr[:10] for tr in graphs_ground_truth]
         graphs_generated = [tr[:10] for tr in graphs_generated]
         scores = compute_scores(
@@ -115,14 +116,14 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
     def validation_step(
         self,
         batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        batch_idx: int # required for pytorch interface
+        batch_idx: int # required for pytorch lightning interface
     ) -> Dict[str, List[List[str]]]:
         return self.eval_step(batch)
 
     def test_step(
         self,
         batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-        batch_idx: int # required for pytorch interface
+        batch_idx: int # required for pytorch lightning interface
     ) -> Dict[str, List[List[str]]]:
         return self.eval_step(batch)
 
