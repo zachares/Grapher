@@ -1,5 +1,4 @@
 import enum
-from functools import partial
 import itertools
 from typing import List, Tuple
 
@@ -15,20 +14,8 @@ class TokenizerFactory(enum.Enum):
     t5 = T5Tokenizer
 
 
-def _build_inputs_with_special_tokens(
-    token_ids_0: List[int],
-    _ : List[int],
-    eos_token_id: int,
-    pad_token_id: int,
-) -> List[int]:
-    return [pad_token_id] + token_ids_0 + [eos_token_id]
-
-
 class GraphTokenizer():
-    def __init__(
-        self,
-        tokenizer: PreTrainedTokenizer
-    ):
+    def __init__(self, tokenizer: PreTrainedTokenizer):
         self.tokenizer = tokenizer
         self.node_token = '__node__'
         self.edge_token = '__edge__'
@@ -36,17 +23,15 @@ class GraphTokenizer():
         self.tokenizer.add_tokens(self.node_token)
         self.tokenizer.add_tokens(self.edge_token)
         self.tokenizer.add_tokens(self.no_edge_token)
-        self.add_special_tokens = partial(
-            _build_inputs_with_special_tokens,
-            eos_token_id=self.tokenizer.eos_token_id,
-            pad_token_id=self.tokenizer.pad_token_id
-        )
-        self.tokenizer.build_inputs_with_special_tokens = self.add_special_tokens
 
-
-    def encode_text(self, text: List[str]) -> List[List[int]]:
+    def encode_text(self, text: List[str], add_special_tokens: bool = True) -> List[List[int]]:
         """ Returns a set of text strings a list of list of token ids, one list for each string """
-        return self.tokenizer(text, add_special_tokens=True, padding=False)['input_ids']
+        token_ids_list = self.tokenizer(text, padding=False)['input_ids']
+        return [
+            self._add_special_tokens(token_ids)
+            if add_special_tokens else token_ids
+            for token_ids in token_ids_list
+        ]
 
     def encode_graphs(self, serialized_graphs: List[List[str]]) -> List[List[List[int]]]:
         """ Returns a set of serialized graphs as a list of list of list of token ids
@@ -54,22 +39,9 @@ class GraphTokenizer():
             in each graph and the inner most list is the list of token ids for each edge
         """
         return [
-            self._encode_graph(serialized_graph)
+            self.encode_text(serialized_graph, add_special_tokens=False)
             for serialized_graph in tqdm(serialized_graphs)
         ]
-
-    def _encode_graph(self, serialized_graph: List[str]) -> List[List[int]]:
-        """ Returns a list of list of token ids for a serialized graphs, the outer list is the list
-            of edges in the graph, the inner list is the token ids of each edge. Each graph has
-            an additional element in the outer list with the token ids required for generating
-            a token id sequence for the entire graph
-        """
-        edges = self.tokenizer(
-            serialized_graph,
-            add_special_tokens=False,
-            padding=False
-        )['input_ids']
-        return edges + [[self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]]
 
     def decode_graphs(self, graph_token_ids: torch.Tensor) -> List[List[str]]:
         graphs_text_list = self.decode_text(graph_token_ids)
@@ -157,13 +129,13 @@ class GraphTokenizer():
         edges_token_ids: List[List[int]],
         shuffle_edges: bool
     ) -> List[int]:
-        assert len(edges_token_ids[-1]) == 2
         shuffled_edges_token_ids = (
-            np.random.permutation(edges_token_ids[:-1]).tolist()
-            if shuffle_edges else edges_token_ids[:-1]
+            np.random.permutation(edges_token_ids).astype(int).tolist()
+            if shuffle_edges else edges_token_ids
         )
-        return (
-            [edges_token_ids[-1][0]]
-            + list(itertools.chain.from_iterable(shuffled_edges_token_ids))
-            + [edges_token_ids[-1][1]]
+        return self._add_special_tokens(
+            list(itertools.chain.from_iterable(shuffled_edges_token_ids))
         )
+
+    def _add_special_tokens(self, token_ids: List[int]) -> List[int]:
+        return [self.tokenizer.pad_token_id] + token_ids + [self.tokenizer.eos_token_id]

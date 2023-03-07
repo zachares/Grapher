@@ -1,53 +1,14 @@
 """ Model classes for training a model to generate serialized graphs from text """
 
 import itertools
-import json
-import os
 from typing import Dict, List, Tuple
 
 import pytorch_lightning as pl
 import torch
-from torch import nn
 from transformers import PreTrainedModel
 
-from WebNLG_Text_to_triples import Evaluation_script_json
 from data.graph_tokenizer import GraphTokenizer
-from data.rdf import save_webnlg_rdf
-
-
-def compute_scores(
-    graphs_generated: List[List[str]],
-    graphs_ground_truth: List[List[str]],
-    iteration: int,
-    model_dir: str,
-    split_name: str,
-    rank: int
-) -> Dict[str, float]:
-    """ Computes evaluation metrics for comparing the actual and estimated knowledge graphs for a
-        batch of text graph pairs
-    """
-    refs = [[' | '.join(i) for i in t] for t in graphs_ground_truth]
-    hyps = [[' | '.join(i) for i in t] for t in graphs_generated]
-    categories = [' '] * len(refs)
-
-    ref_fname, hyp_fname = save_webnlg_rdf(
-        hyps=hyps,
-        refs=refs,
-        categories=categories,
-        out_dir=os.path.join(model_dir, split_name),
-        iteration=f'{iteration}_{rank}'
-    )
-
-    scores_fname = os.path.join(model_dir, split_name, f'scores_{iteration}_{rank}.json')
-
-    Evaluation_script_json.main(ref_fname, hyp_fname, scores_fname)
-
-    scores = json.load(open(scores_fname))
-    return {
-        'Precision': scores['Total_scores']['Exact']['Precision'],
-        'Recall': scores['Total_scores']['Exact']['Recall'],
-        'F1': scores['Total_scores']['Exact']['F1']
-    }
+from metrics import compute_scores
 
 
 class LitText2SerializedGraphLLM(pl.LightningModule):
@@ -69,7 +30,8 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
 
     def training_step(
         self,
-        batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        batch_idx: int # required for pytorch interface
     ) -> torch.Tensor:
         """ Performs a forward pass through the model and computes the loss for a batch of
             text graph pairs in the trainings set
@@ -137,8 +99,7 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
         )
         # make sure number of paths is smaller than 10 (legacy hack from Grapher Project)
         graphs_ground_truth = [tr[:10] for tr in graphs_ground_truth]
-        graphs_ground_truth = [tr[:10] for tr in graphs_generated]
-        import pdb;pdb.set_trace()
+        graphs_generated = [tr[:10] for tr in graphs_generated]
         scores = compute_scores(
             graphs_generated=graphs_generated,
             graphs_ground_truth=graphs_ground_truth,
@@ -147,11 +108,9 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
             split_name=split_name,
             rank=rank
         )
-
         for k, v in scores.items():
             self.logger.experiment.add_scalar(f'{split_name}_score/{k}', v, global_step=iteration)
-
-        self.log_dict(scores)
+        self.log_dict(scores, prog_bar=True)
 
     def validation_step(
         self,

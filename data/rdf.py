@@ -1,6 +1,6 @@
 from typing import List, Tuple
 
-from os.path import join
+import os
 from xml.etree.ElementTree import Element, SubElement
 from xml.etree import ElementTree
 from xml.dom import minidom
@@ -56,8 +56,10 @@ def save_webnlg_rdf(
     ref_xml = create_xml(refs, categories, "modifiedtripleset", "mtriple")
     hyp_xml = create_xml(hyps, categories, "generatedtripleset", "gtriple")
 
-    ref_fname = join(out_dir, f"ref_{iteration}.xml")
-    hyp_fname = join(out_dir, f"hyp_{iteration}.xml")
+    os.makedirs(out_dir, exist_ok=True)
+
+    ref_fname = os.path.join(out_dir, f"ref_{iteration}.xml")
+    hyp_fname = os.path.join(out_dir, f"hyp_{iteration}.xml")
 
     print(f"creating reference xml  file : [{ref_fname}]")
     print(f"creating hypothesis xml file : [{hyp_fname}]")

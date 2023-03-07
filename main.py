@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--run", type=str, default='train')
     parser.add_argument("--gpu-devices", nargs="*", type=int, required=True)
-    parser.add_argument('--batch_size', type=int, default=10)
+    parser.add_argument('--batch_size', type=int, default=55)
     parser.add_argument('--learning-rate', default=1e-5, type=float)
 
     parser = pl.Trainer.add_argparse_args(parser)

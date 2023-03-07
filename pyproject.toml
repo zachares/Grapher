@@ -8,6 +8,7 @@ authors = ["Igor Melnyk"]
 python = "~3.9"
 
 bs4 = {version="^0.0.1"}
+lxml = {version="^4.9.2"}
 nervaluate = {version="^0.1.8"}
 networkx = {version="^3.0"}
 nltk = {version="^3.8.1"}

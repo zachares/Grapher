@@ -20,26 +20,21 @@ def init_and_load_model(
     learning_rate: float,
     load_model: bool
 ) -> LitText2SerializedGraphLLM:
+    model_hyperparameters = {
+        "language_model": LanguageModelFactory[language_model_type].value.from_pretrained(
+            pretrained_model_name_or_path=language_model_name,
+            cache_dir=model_dir
+        ),
+        "tokenizer": tokenizer,
+        "model_dir": model_dir,
+        "learning_rate": learning_rate
+    }
     if load_model:
         checkpoint_model_path = os.path.join(model_dir, 'last.ckpt')
         model = LitText2SerializedGraphLLM.load_from_checkpoint(
             checkpoint_model_path,
-            language_model=LanguageModelFactory[language_model_type].value.from_pretrained(
-                pretrained_model_name_or_path=language_model_name,
-                cache_dir=model_dir
-            ),
-            tokenizer=tokenizer,
-            model_dir=model_dir,
-            learning_rate=learning_rate
+            **model_hyperparameters
         )
     else:
-        model = LitText2SerializedGraphLLM(
-            language_model=LanguageModelFactory[language_model_type].value.from_pretrained(
-                pretrained_model_name_or_path=language_model_name,
-                cache_dir=model_dir
-            ),
-            tokenizer=tokenizer,
-            model_dir=model_dir,
-            learning_rate=learning_rate
-        )
+        model = LitText2SerializedGraphLLM(**model_hyperparameters)
     return model
