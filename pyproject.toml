@@ -9,7 +9,7 @@ python = "~3.9"
 
 bs4 = {version="^0.0.1"}
 nervaluate = {version="^0.1.8"}
-networkx = {version"^3.0"}
+networkx = {version="^3.0"}
 nltk = {version="^3.8.1"}
 pytorch_lightning = {version="^1.9.3"}
 rich = {version="^13.3.1"}

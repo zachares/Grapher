@@ -1,11 +1,11 @@
 import enum
 from functools import partial
 import itertools
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import numpy as np
 import torch
-from transformers import PreTrainedTokenizer, T5Tokenizer
+from transformers import BatchEncoding, PreTrainedTokenizer, T5Tokenizer
 from tqdm import tqdm
 
 
@@ -17,9 +17,9 @@ class TokenizerFactory(enum.Enum):
 
 def _build_inputs_with_special_tokens(
     token_ids_0: List[int],
+    _ : List[int],
     eos_token_id: int,
     pad_token_id: int,
-    token_ids_1: Optional[List[int]]= None,
 ) -> List[int]:
     return [pad_token_id] + token_ids_0 + [eos_token_id]
 
@@ -46,14 +46,7 @@ class GraphTokenizer():
 
     def encode_text(self, text: List[str]) -> List[List[int]]:
         """ Returns a set of text strings a list of list of token ids, one list for each string """
-        text_token_ids = self.tokenizer(
-            text,
-            add_special_tokens=True,
-            padding=False,
-            return_tensors='np',
-            show_progress_bar=True
-        )
-        return [token_ids.astype(int).tolist() for token_ids in text_token_ids]
+        return self.tokenizer(text, add_special_tokens=True, padding=False)['input_ids']
 
     def encode_graphs(self, serialized_graphs: List[List[str]]) -> List[List[List[int]]]:
         """ Returns a set of serialized graphs as a list of list of list of token ids
@@ -74,10 +67,8 @@ class GraphTokenizer():
         edges = self.tokenizer(
             serialized_graph,
             add_special_tokens=False,
-            padding=False,
-            return_tensors='np'
-        )
-        edges = [edge.astype(int).tolist() for edge in edges]
+            padding=False
+        )['input_ids']
         return edges + [[self.tokenizer.pad_token_id, self.tokenizer.eos_token_id]]
 
     def decode_graphs(self, graph_token_ids: torch.Tensor) -> List[List[str]]:
@@ -103,10 +94,13 @@ class GraphTokenizer():
         for token_ids in text_token_ids:
             bos_mask = (token_ids == self.tokenizer.pad_token_id).nonzero(as_tuple=False)
             eos_mask = (token_ids == self.tokenizer.eos_token_id).nonzero(as_tuple=False)
-            import pdb;pdb.set_trace()
-            try:
-                text_dec = self.tokenizer._decode(text_token_ids[bos_mask[0] + 1:eos_mask[0]])
-            except:
+            if (
+                (bos_mask[0] + 1) < eos_mask[0]
+                and eos_mask[0] < token_ids.size(0)
+                and (bos_mask[0] + 1) < token_ids.size(0)
+            ):
+                text_dec = self.tokenizer._decode(token_ids[bos_mask[0] + 1:eos_mask[0]])
+            else:
                 text_dec = ""
             text_decoded.append(text_dec)
         return text_decoded
@@ -115,8 +109,12 @@ class GraphTokenizer():
         self,
         text_token_ids: List[List[int]]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        import pdb;pdb.set_trace()
-        padded_ids_dict = self.tokenizer.pad(text_token_ids)
+        token_id_batch = BatchEncoding({'input_ids': text_token_ids})
+        padded_ids_dict = self.tokenizer.pad(
+            token_id_batch,
+            return_attention_mask=True,
+            return_tensors='pt'
+        )
         return padded_ids_dict['input_ids'], padded_ids_dict['attention_mask']
 
     def batch_graphs_token_ids(
@@ -161,7 +159,7 @@ class GraphTokenizer():
     ) -> List[int]:
         assert len(edges_token_ids[-1]) == 2
         shuffled_edges_token_ids = (
-            np.random.shuffle(edges_token_ids[:-1])
+            np.random.permutation(edges_token_ids[:-1]).tolist()
             if shuffle_edges else edges_token_ids[:-1]
         )
         return (

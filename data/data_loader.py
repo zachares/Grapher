@@ -6,8 +6,8 @@ import json
 from torch.utils.data import DataLoader, Dataset
 import torch
 
-from graph_tokenizer import GraphTokenizer
-from preprocess_data import get_processed_data_paths
+from data.graph_tokenizer import GraphTokenizer
+from data.preprocess_data import get_processed_data_paths
 
 
 def init_dataloader(
@@ -43,9 +43,11 @@ class GraphDataset(Dataset):
     ):
         self.tokenizer = tokenizer
         self.processed_data_path = processed_data_path
-        self.split_name = split_name
         self.shuffle_edges = shuffle_edges
+        self.load_split_data(split_name)
 
+    def load_split_data(self, split_name: str) -> None:
+        self.split_name = split_name
         data_file_paths = get_processed_data_paths(
             dataset_path=self.processed_data_path,
             split_name=self.split_name
@@ -66,14 +68,14 @@ class GraphDataset(Dataset):
         return len(self.text)
 
     def __getitem__(self, index: int) -> Tuple[List[List[int]], List[List[List[int]]]]:
-        item = (self.text_token_ids[index], self.graphs_token_ids[index])
-        return item
+        return self.text_token_ids[index], self.graphs_token_ids[index]
 
     def _collate_fn(
         self,
         data: Tuple[List[List[int]], List[List[List[int]]]]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        text_token_ids, graph_token_ids = data
+        text_token_ids = [point[0] for point in data]
+        graph_token_ids = [point[1] for point in data]
         collated_data = self.tokenizer.batch_token_ids(text_token_ids)
         collated_data += self.tokenizer.batch_graphs_token_ids(graph_token_ids)
         return collated_data

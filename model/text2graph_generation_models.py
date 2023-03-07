@@ -60,9 +60,9 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
         learning_rate: float
     ):
         super().__init__()
-        self.save_hyperparameters()
         self.unlabelled_idx = -100
-        self.model =  Text2SerializedGraphLLM(language_model)
+        self.max_length = 200 # maximum sequence length in NLG data set is 191
+        self.language_model = language_model
         self.tokenizer = tokenizer
         self.model_dir=model_dir
         self.learning_rate = learning_rate
@@ -77,12 +77,12 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
         # graph_token_ids: batch_size X seq_len_node
         text_token_ids, text_token_attn_mask, graph_token_ids, graph_token_attn_mask = batch
         # graph_token_id_logits: batch_size X seq_len_node X vocab_size
-        graph_token_id_logits = self.model(
-            text_token_id=text_token_ids,
-            text_token_attn_mask=text_token_attn_mask,
-            graph_token_ids=graph_token_ids,
-            graph_token_attn_mask=graph_token_attn_mask
-        )
+        graph_token_id_logits = self.language_model(
+            input_ids=text_token_ids,
+            attention_mask=text_token_attn_mask,
+            decoder_input_ids=graph_token_ids,
+            decoder_attention_mask=graph_token_attn_mask
+        ).logits
         # predicting the next token in the sequence
         loss = torch.nn.CrossEntropyLoss(reduction='none', ignore_index=self.unlabelled_idx)(
             input=graph_token_id_logits[:, :-1].transpose(1,2),
@@ -111,7 +111,11 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
             graph pair in the batch
         """
         text_token_ids, text_token_attn_mask, graph_token_ids, _ = batch
-        graph_token_ids_generated = self.model.sample(text_token_ids, text_token_attn_mask)
+        graph_token_ids_generated = self.language_model.generate(
+            input_ids=text_token_ids,
+            max_length=self.max_length,
+            attention_mask=text_token_attn_mask
+        )
         return {
             'graphs_ground_truth': self.tokenizer.decode_graphs(graph_token_ids),
             'graphs_generated': self.tokenizer.decode_graphs(graph_token_ids_generated)
@@ -134,7 +138,7 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
         # make sure number of paths is smaller than 10 (legacy hack from Grapher Project)
         graphs_ground_truth = [tr[:10] for tr in graphs_ground_truth]
         graphs_ground_truth = [tr[:10] for tr in graphs_generated]
-
+        import pdb;pdb.set_trace()
         scores = compute_scores(
             graphs_generated=graphs_generated,
             graphs_ground_truth=graphs_ground_truth,
@@ -151,55 +155,23 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
 
     def validation_step(
         self,
-        batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        batch_idx: int # required for pytorch interface
     ) -> Dict[str, List[List[str]]]:
         return self.eval_step(batch)
 
     def test_step(
         self,
-        batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
+        batch: Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+        batch_idx: int # required for pytorch interface
     ) -> Dict[str, List[List[str]]]:
         return self.eval_step(batch)
 
-    def validation_epoch_end(self, outputs):
+    def validation_epoch_end(self, outputs: List[Dict[str, List[List[str]]]]):
         self.eval_epoch_end(outputs, 'valid')
 
-    def test_epoch_end(self, outputs):
+    def test_epoch_end(self, outputs: List[Dict[str, List[List[str]]]]):
         self.eval_epoch_end(outputs, 'test')
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(self.parameters(), self.learning_rate)
-        return optimizer
-
-
-class Text2SerializedGraphLLM(nn.Module):
-    """ Text to SerializedGraph Generation Models """
-    def __init__(self, language_model: PreTrainedModel):
-        super().__init__()
-        self.language_model = language_model
-        self.max_length = 500 # legacy magic number from Grapher
-
-    def forward(
-        self,
-        text_token_ids: torch.Tensor,
-        text_token_mask: torch.Tensor,
-        graph_token_ids: torch.Tensor,
-        graph_token_mask: torch.Tensor
-    ) -> torch.Tensor:
-        return self.language_model(
-            input_ids=text_token_ids,
-            attention_mask=text_token_mask,
-            decoder_input_ids=graph_token_ids,
-            decoder_attention_mask=graph_token_mask
-        ).logits
-
-    def sample(
-        self,
-        text_token_ids: torch.Tensor,
-        text_token_mask: torch.Tensor
-    ) -> torch.Tensor :
-        return self.language_model.generate(
-            input_ids=text_token_ids,
-            max_length=self.max_length,
-            attention_mask=text_token_mask
-        ).sequences[:, 1:]
+        return torch.optim.AdamW(self.parameters(), self.learning_rate)

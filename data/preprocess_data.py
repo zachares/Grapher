@@ -10,7 +10,7 @@ import unicodedata as ud
 
 from corpusreader.benchmark_reader import Benchmark
 from corpusreader.benchmark_reader import select_files
-from graph_tokenizer import GraphTokenizer
+from data.graph_tokenizer import GraphTokenizer
 
 
 def prepareWebNLG(
@@ -21,6 +21,18 @@ def prepareWebNLG(
 ) -> None:
     """ Preprocesses and saves data set as a set of sequenced text graph pairs """
     for split_name in split_names:
+        data_file_paths = get_processed_data_paths(
+            dataset_path=target_path,
+            split_name=split_name
+        )
+        preprocessing_done = True
+        for file_path in data_file_paths.values():
+            if not os.path.isfile(file_path):
+                preprocessing_done = False
+                break
+        if preprocessing_done:
+            continue
+
         split_dataset = _read_webnlg_dataset(
             source_path=source_path,
             split_name=split_name,
@@ -35,12 +47,7 @@ def prepareWebNLG(
         )
         text_token_ids = tokenizer.encode_text(text_list)
         graph_token_ids = tokenizer.encode_graphs(serialized_graphs)
-        num_tokens = [len(list(itertools.chain.from_iterable(edges))) for edges in graph_token_ids]
-        print(f"Maximum Token Sequence Length: {max(num_tokens)}")
-        data_file_paths = get_processed_data_paths(
-            dataset_path=target_path,
-            split_name=split_name
-        )
+
         with open(data_file_paths['raw_text'], 'w', encoding='utf-8') as f:
             f.writelines(s + '\n' for s in text_list)
 
