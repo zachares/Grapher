@@ -3,6 +3,7 @@
 from typing import List, Tuple
 
 import json
+import random
 from torch.utils.data import DataLoader, Dataset
 import torch
 
@@ -16,12 +17,14 @@ def init_dataloader(
     shuffle_data: bool,
     data_path: str,
     batch_size: int,
-    num_data_workers: int
+    num_data_workers: int,
+    augment_data: bool
 ) -> DataLoader:
     dataset = GraphDataset(
         tokenizer=tokenizer,
         processed_data_path=data_path,
-        split_name=split_name
+        split_name=split_name,
+        augment_data=augment_data
     )
     return DataLoader(
         dataset,
@@ -39,43 +42,51 @@ class GraphDataset(Dataset):
         tokenizer: GraphTokenizer,
         processed_data_path: str,
         split_name: str,
-        shuffle_edges: bool = False
+        augment_data: bool
     ):
         self.tokenizer = tokenizer
         self.processed_data_path = processed_data_path
-        self.shuffle_edges = shuffle_edges
+        self.augment_data = augment_data
         self.load_split_data(split_name)
+
 
     def load_split_data(self, split_name: str) -> None:
         self.split_name = split_name
         data_file_paths = get_processed_data_paths(
             dataset_path=self.processed_data_path,
-            split_name=self.split_name
+            split_name=self.split_name,
+            augment_data=self.augment_data
         )
-        with open(data_file_paths['raw_text'], 'r', encoding='utf-8') as f:
-            self.text = f.read().splitlines()
-
         with open(data_file_paths['text_token_ids'], 'r', encoding='utf-8') as f:
             self.text_token_ids = json.load(f)
-
-        with open(data_file_paths['raw_graphs'], 'r', encoding='utf-8') as f:
-            self.graphs = json.load(f)
 
         with open(data_file_paths['graphs_token_ids'], 'r', encoding='utf-8') as f:
             self.graphs_token_ids = json.load(f)
 
     def __len__(self):
-        return len(self.text)
+        return len(self.text_token_ids)
 
-    def __getitem__(self, index: int) -> Tuple[List[List[int]], List[List[List[int]]]]:
+    def __getitem__(self, index: int) -> Tuple[List[List[int]], List[List[int]]]:
         return self.text_token_ids[index], self.graphs_token_ids[index]
 
     def _collate_fn(
         self,
-        data: Tuple[List[List[int]], List[List[List[int]]]]
+        data: Tuple[List[List[List[int]]], List[List[List[int]]]]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        text_token_ids = [point[0] for point in data]
-        graph_token_ids = [point[1] for point in data]
-        collated_data = self.tokenizer.batch_token_ids(text_token_ids)
-        collated_data += self.tokenizer.batch_graphs_token_ids(graph_token_ids)
+        if self.augment_data:
+            text_token_ids = [random.choice(point[0]) for point in data]
+            graph_token_ids = [point[1] for point in data]
+            collated_data = self.tokenizer.batch_token_ids(text_token_ids)
+            collated_data += self.tokenizer.batch_graphs_token_ids(
+                graph_token_ids,
+                shuffle_edges=True
+            )
+        else:
+            text_token_ids = [point[0][0] for point in data]
+            graph_token_ids = [point[1] for point in data]
+            collated_data = self.tokenizer.batch_token_ids(text_token_ids)
+            collated_data += self.tokenizer.batch_graphs_token_ids(
+                graph_token_ids,
+                shuffle_edges=False
+            )
         return collated_data

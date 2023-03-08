@@ -1,8 +1,8 @@
 import enum
 import itertools
+import random
 from typing import List, Tuple
 
-import numpy as np
 import torch
 from transformers import BatchEncoding, PreTrainedTokenizer, T5Tokenizer
 from tqdm import tqdm
@@ -24,23 +24,23 @@ class GraphTokenizer():
         self.tokenizer.add_tokens(self.edge_token)
         self.tokenizer.add_tokens(self.no_edge_token)
 
-    def encode_text(self, text: List[str], add_special_tokens: bool = True) -> List[List[int]]:
+    def encode_grouped_text(
+        self,
+        texts_list: List[List[str]],
+        add_special_tokens: bool
+    ) -> List[List[List[int]]]:
+        return [
+            self._encode_text(text_list, add_special_tokens=add_special_tokens)
+            for text_list in tqdm(texts_list)
+        ]
+
+    def _encode_text(self, text: List[str], add_special_tokens: bool) -> List[List[int]]:
         """ Returns a set of text strings a list of list of token ids, one list for each string """
         token_ids_list = self.tokenizer(text, padding=False)['input_ids']
         return [
             self._add_special_tokens(token_ids)
             if add_special_tokens else token_ids
             for token_ids in token_ids_list
-        ]
-
-    def encode_graphs(self, serialized_graphs: List[List[str]]) -> List[List[List[int]]]:
-        """ Returns a set of serialized graphs as a list of list of list of token ids
-            the outer list is the list of graphs, the next list down is the list of edges
-            in each graph and the inner most list is the list of token ids for each edge
-        """
-        return [
-            self.encode_text(serialized_graph, add_special_tokens=False)
-            for serialized_graph in tqdm(serialized_graphs)
         ]
 
     def decode_graphs(self, graph_token_ids: torch.Tensor) -> List[List[str]]:
@@ -129,13 +129,9 @@ class GraphTokenizer():
         edges_token_ids: List[List[int]],
         shuffle_edges: bool
     ) -> List[int]:
-        shuffled_edges_token_ids = (
-            np.random.permutation(edges_token_ids).astype(int).tolist()
-            if shuffle_edges else edges_token_ids
-        )
-        return self._add_special_tokens(
-            list(itertools.chain.from_iterable(shuffled_edges_token_ids))
-        )
+        if shuffle_edges:
+            random.shuffle(edges_token_ids)
+        return self._add_special_tokens(list(itertools.chain.from_iterable(edges_token_ids)))
 
     def _add_special_tokens(self, token_ids: List[int]) -> List[int]:
         return [self.tokenizer.pad_token_id] + token_ids + [self.tokenizer.eos_token_id]

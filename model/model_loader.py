@@ -17,6 +17,7 @@ def init_and_load_model(
     language_model_type: str,
     language_model_name: str,
     model_dir: str,
+    model_name: str,
     learning_rate: float,
     load_model: bool
 ) -> LitText2SerializedGraphLLM:
@@ -30,7 +31,15 @@ def init_and_load_model(
         "learning_rate": learning_rate
     }
     if load_model:
-        checkpoint_model_path = os.path.join(model_dir, 'last.ckpt')
+        latest_checkpoint = ""
+        for file_name in os.listdir(model_dir):
+            if model_name in file_name:
+                latest_checkpoint = (
+                    latest_checkpoint
+                    if latest_checkpoint > file_name and len(latest_checkpoint) >= len(file_name)
+                    else file_name
+                )
+        checkpoint_model_path = os.path.join(model_dir, "vanilla_language_model-v2.ckpt")
         print(f"Loading model from {checkpoint_model_path}")
         model = LitText2SerializedGraphLLM.load_from_checkpoint(
             checkpoint_model_path,

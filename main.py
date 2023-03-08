@@ -25,13 +25,15 @@ def main(args):
         tokenizer=tokenizer,
         source_path=args.data_path,
         target_path=args.output_path,
-        split_names=['train', 'dev', 'test']
+        split_names=['train', 'dev', 'test'],
+        augment_data=args.augment_data
     )
     model = init_and_load_model(
         tokenizer=tokenizer,
         language_model_type=args.language_model_type,
         language_model_name=args.language_model_name,
         model_dir=args.model_dir,
+        model_name=args.model_name,
         learning_rate=args.learning_rate,
         load_model=args.load_model
     )
@@ -48,7 +50,8 @@ def main(args):
             shuffle_data=True,
             data_path=args.output_path,
             batch_size=args.batch_size,
-            num_data_workers=args.num_data_workers
+            num_data_workers=args.num_data_workers,
+            augment_data=args.augment_data
         )
         val_dataloader = init_dataloader(
             tokenizer=tokenizer,
@@ -56,13 +59,14 @@ def main(args):
             shuffle_data=False,
             data_path=args.output_path,
             batch_size=args.batch_size,
-            num_data_workers=args.num_data_workers
+            num_data_workers=args.num_data_workers,
+            augment_data=False
         )
         checkpoint_callback = ModelCheckpoint(
+            monitor="F1",
             dirpath=args.model_dir,
             filename=args.model_name,
-            save_last=True,
-            save_top_k=-1,
+            save_top_k=1,
             save_weights_only=True,
             every_n_epochs=1,
         )
@@ -89,7 +93,8 @@ def main(args):
             shuffle_data=True,
             data_path=args.output_path,
             batch_size=args.batch_size,
-            num_data_workers=args.num_data_workers
+            num_data_workers=args.num_data_workers,
+            augment_data=False
         )
         trainer = pl.Trainer.from_argparse_args(
             args,
@@ -111,20 +116,21 @@ if __name__ == "__main__":
     parser.add_argument('--language-model-name', type=str, default='t5-large')
     parser.add_argument('--model-dir', type=str, required=True)
     parser.add_argument('--model-name', type=str, required=True)
-    parser.add_argument("--load-model", type=bool, default=True)
+    parser.add_argument("--load-model", type=int, required=True)
 
     parser.add_argument("--dataset", type=str, default='webnlg')
     parser.add_argument('--version', type=str, default='0')
     parser.add_argument('--data_path', type=str, default='')
     parser.add_argument('--num_data_workers', type=int, default=3)
+    parser.add_argument('--augment-data', type=int, required=True)
 
     parser.add_argument("--run", type=str, default='train')
     parser.add_argument("--gpu-devices", nargs="*", type=int, required=True)
     parser.add_argument('--batch_size', type=int, default=55)
     parser.add_argument('--learning-rate', default=1e-5, type=float)
 
-    parser = pl.Trainer.add_argparse_args(parser)
 
+    parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
 
     main(args)

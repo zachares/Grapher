@@ -98,7 +98,6 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
             itertools.chain.from_iterable([out['graphs_generated'] for out in outputs])
         )
         # make sure number of paths is smaller than 10 (legacy hack from Grapher Project)
-        import pdb;pdb.set_trace()
         graphs_ground_truth = [tr[:10] for tr in graphs_ground_truth]
         graphs_generated = [tr[:10] for tr in graphs_generated]
         scores = compute_scores(

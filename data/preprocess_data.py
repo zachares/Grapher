@@ -1,5 +1,7 @@
 """ Preprocessing functions for the WebNLG2020 data set """
 
+from collections import defaultdict
+import itertools
 import json
 import os
 from typing import Any, Dict, List, Tuple
@@ -16,13 +18,16 @@ def prepareWebNLG(
     tokenizer: GraphTokenizer,
     source_path: str,
     target_path: str,
-    split_names: List[str]
+    split_names: List[str],
+    augment_data: bool
 ) -> None:
     """ Preprocesses and saves data set as a set of sequenced text graph pairs """
     for split_name in split_names:
+        augment_bool = augment_data if split_name == "train" else False
         data_file_paths = get_processed_data_paths(
             dataset_path=target_path,
-            split_name=split_name
+            split_name=split_name,
+            augment_data=augment_bool
         )
         preprocessing_done = True
         for file_path in data_file_paths.values():
@@ -39,16 +44,24 @@ def prepareWebNLG(
         )
         triples_list, text_list = _extract_text_triples_pairs(split_dataset)
         nodes_list, edges_list, edge_indexes_list = _parse_triples(triples_list)
-        serialized_graphs = tokenizer.serialize_graphs(
+        serialized_graphs_list = tokenizer.serialize_graphs(
             nodes_list=nodes_list,
             edges_list=edges_list,
             edge_indexes_list=edge_indexes_list
         )
-        text_token_ids = tokenizer.encode_text(text_list)
-        graph_token_ids = tokenizer.encode_graphs(serialized_graphs)
+        if augment_bool and split_name == 'train':
+            text_list, serialized_graphs_list = _aggregate_duplicates(text_list, serialized_graphs_list)
+        else:
+            text_list = [[text] for text in text_list]
+
+        text_token_ids = tokenizer.encode_grouped_text(text_list, add_special_tokens=True)
+        graph_token_ids = tokenizer.encode_grouped_text(
+            serialized_graphs_list,
+            add_special_tokens=False
+        )
 
         with open(data_file_paths['raw_text'], 'w', encoding='utf-8') as f:
-            f.writelines(s + '\n' for s in text_list)
+            json.dump(text_list, f)
 
         with open(data_file_paths['raw_graphs'], 'w', encoding='utf-8') as f:
             json.dump(
@@ -57,22 +70,50 @@ def prepareWebNLG(
             )
         with open(data_file_paths['graphs_token_ids'], 'w', encoding='utf-8') as f:
             json.dump(graph_token_ids, f)
+
         with open(data_file_paths['text_token_ids'], 'w', encoding='utf-8') as f:
             json.dump(text_token_ids, f)
 
 
+def _aggregate_duplicates(
+    text_list: List[str],
+    serialized_graphs_list: List[List[str]]
+) -> Tuple[List[List[str]], List[List[str]]]:
+    """ Aggregates text which is paired with the same knowledge graph """
+    sequenced_graphs_list = ["".join(sorted(edges_str)) for edges_str in serialized_graphs_list]
+    graph2idx = defaultdict(list)
+    for idx, graph_str in enumerate(sequenced_graphs_list):
+        graph2idx[graph_str].append(idx)
+    text_idxs, graph_idxs = [], []
+    for idxs in graph2idx.values():
+        text_idxs.append(idxs)
+        graph_idxs.append(idxs[0])
+    return (
+        [[text_list[idx] for idx in point_idxs] for point_idxs in text_idxs],
+        [serialized_graphs_list[idx] for idx in graph_idxs]
+    )
+
+
 def get_processed_data_paths(
     dataset_path: str,
-    split_name: str
+    split_name: str,
+    augment_data: bool
 ) -> Dict[str, str]:
     """ Returns a dictionary of the file paths to each of the four files required for text to
         serialized graph generation
     """
+    augmented_str = "augmented" if augment_data else "not_augmented"
     return {
-        'raw_graphs': os.path.join(dataset_path, f"{split_name}_graphs.json"),
-        'raw_text': os.path.join(dataset_path, f"{split_name}.txt"),
-        'graphs_token_ids': os.path.join(dataset_path, f"{split_name}_graphs_token_ids.json"),
-        'text_token_ids': os.path.join(dataset_path, f"{split_name}_text_token_ids.json")
+        'raw_graphs': os.path.join(dataset_path, f"{split_name}_{augmented_str}_graphs.json"),
+        'raw_text': os.path.join(dataset_path, f"{split_name}_{augmented_str}_text.json"),
+        'graphs_token_ids': os.path.join(
+            dataset_path,
+            f"{split_name}_{augmented_str}_graphs_token_ids.json"
+        ),
+        'text_token_ids': os.path.join(
+            dataset_path,
+            f"{split_name}_{augmented_str}_text_token_ids.json"
+        )
     }
 
 
