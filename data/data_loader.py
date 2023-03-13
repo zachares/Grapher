@@ -1,5 +1,6 @@
 """ Data loading and processing classes for loading a data set of knowledge graph text pairs """
 
+from copy import deepcopy
 from typing import List, Tuple
 
 import json
@@ -67,26 +68,25 @@ class GraphDataset(Dataset):
         return len(self.text_token_ids)
 
     def __getitem__(self, index: int) -> Tuple[List[List[int]], List[List[int]]]:
-        return self.text_token_ids[index], self.graphs_token_ids[index]
+        return deepcopy(self.text_token_ids[index]), deepcopy(self.graphs_token_ids[index])
 
     def _collate_fn(
         self,
         data: Tuple[List[List[List[int]]], List[List[List[int]]]]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         if self.augment_data:
-            text_token_ids = [random.choice(point[0]) for point in data]
-            graph_token_ids = [point[1] for point in data]
-            collated_data = self.tokenizer.batch_token_ids(text_token_ids)
-            collated_data += self.tokenizer.batch_graphs_token_ids(
-                graph_token_ids,
-                shuffle_edges=True
-            )
+            text_token_ids = []
+            graph_token_ids = []
+            for (text_list, edge_list) in data:
+                text_token_ids.append(text_list.pop(random.randrange(len(text_list))))
+                graph_token_ids.append(edge_list)
+                if len(text_list) > 0:
+                    text_token_ids.append(text_list.pop(random.randrange(len(text_list))))
+                    random.shuffle(edge_list)
+                    graph_token_ids.append(edge_list)
         else:
             text_token_ids = [point[0][0] for point in data]
             graph_token_ids = [point[1] for point in data]
-            collated_data = self.tokenizer.batch_token_ids(text_token_ids)
-            collated_data += self.tokenizer.batch_graphs_token_ids(
-                graph_token_ids,
-                shuffle_edges=False
-            )
+        collated_data = self.tokenizer.batch_token_ids(text_token_ids)
+        collated_data += self.tokenizer.batch_graphs_token_ids(graph_token_ids)
         return collated_data

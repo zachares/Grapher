@@ -63,13 +63,16 @@ def main(args):
             augment_data=False
         )
         checkpoint_callback = ModelCheckpoint(
-            monitor="F1",
             dirpath=args.model_dir,
             filename=args.model_name,
-            save_top_k=1,
             save_weights_only=True,
-            every_n_epochs=1,
+            save_top_k=1,
+            mode='max',
+            monitor='F1',
+            save_on_train_epoch_end=False,
+            verbose=True
         )
+        print(args.model_name)
         trainer = pl.Trainer.from_argparse_args(
             args,
             logger=logger,
@@ -89,8 +92,8 @@ def main(args):
     elif args.run == 'test':
         test_dataloader = init_dataloader(
             tokenizer=tokenizer,
-            split_name='dev',
-            shuffle_data=True,
+            split_name='test',
+            shuffle_data=False,
             data_path=args.output_path,
             batch_size=args.batch_size,
             num_data_workers=args.num_data_workers,

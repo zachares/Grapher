@@ -2,12 +2,14 @@
 cd ../
 python main.py    --logging-dir /workspaces/code/neurips_code/logging/ \
                   --model-dir /workspaces/code/neurips_code/models/ \
-                  --model-name vanilla_language_model\
+                  --model-name augmented_language_model_repeated\
+                  --augment-data 0\
+                  --load-model 1\
                   --version 2 \
                   --data_path webnlg-dataset/release_v3.0/en \
                   --num_data_workers 10 \
                   --run test \
-                  --gpu-devices 1 \
+                  --gpu-devices 2 \
                   --batch_size 55 \
                   --learning-rate 1e-4 \
                   --max_epochs 100 \

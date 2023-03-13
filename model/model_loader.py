@@ -39,7 +39,7 @@ def init_and_load_model(
                     if latest_checkpoint > file_name and len(latest_checkpoint) >= len(file_name)
                     else file_name
                 )
-        checkpoint_model_path = os.path.join(model_dir, "vanilla_language_model-v2.ckpt")
+        checkpoint_model_path = os.path.join(model_dir, f"{model_name}-v1.ckpt")
         print(f"Loading model from {checkpoint_model_path}")
         model = LitText2SerializedGraphLLM.load_from_checkpoint(
             checkpoint_model_path,

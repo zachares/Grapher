@@ -23,56 +23,59 @@ def prepareWebNLG(
 ) -> None:
     """ Preprocesses and saves data set as a set of sequenced text graph pairs """
     for split_name in split_names:
-        augment_bool = augment_data if split_name == "train" else False
-        data_file_paths = get_processed_data_paths(
-            dataset_path=target_path,
-            split_name=split_name,
-            augment_data=augment_bool
-        )
-        preprocessing_done = True
-        for file_path in data_file_paths.values():
-            if not os.path.isfile(file_path):
-                preprocessing_done = False
-                break
-        if preprocessing_done:
-            continue
-
-        split_dataset = _read_webnlg_dataset(
-            source_path=source_path,
-            split_name=split_name,
-            target_path=target_path
-        )
-        triples_list, text_list = _extract_text_triples_pairs(split_dataset)
-        nodes_list, edges_list, edge_indexes_list = _parse_triples(triples_list)
-        serialized_graphs_list = tokenizer.serialize_graphs(
-            nodes_list=nodes_list,
-            edges_list=edges_list,
-            edge_indexes_list=edge_indexes_list
-        )
-        if augment_bool and split_name == 'train':
-            text_list, serialized_graphs_list = _aggregate_duplicates(text_list, serialized_graphs_list)
-        else:
-            text_list = [[text] for text in text_list]
-
-        text_token_ids = tokenizer.encode_grouped_text(text_list, add_special_tokens=True)
-        graph_token_ids = tokenizer.encode_grouped_text(
-            serialized_graphs_list,
-            add_special_tokens=False
-        )
-
-        with open(data_file_paths['raw_text'], 'w', encoding='utf-8') as f:
-            json.dump(text_list, f)
-
-        with open(data_file_paths['raw_graphs'], 'w', encoding='utf-8') as f:
-            json.dump(
-                {'nodes': nodes_list, 'edges': edges_list, 'edge_indexes': edge_indexes_list},
-                f
+        for augment_bool in [True, False]:
+            data_file_paths = get_processed_data_paths(
+                dataset_path=target_path,
+                split_name=split_name,
+                augment_data=augment_bool
             )
-        with open(data_file_paths['graphs_token_ids'], 'w', encoding='utf-8') as f:
-            json.dump(graph_token_ids, f)
+            preprocessing_done = True
+            for file_path in data_file_paths.values():
+                if not os.path.isfile(file_path):
+                    preprocessing_done = False
+                    break
+            if preprocessing_done:
+                continue
 
-        with open(data_file_paths['text_token_ids'], 'w', encoding='utf-8') as f:
-            json.dump(text_token_ids, f)
+            split_dataset = _read_webnlg_dataset(
+                source_path=source_path,
+                split_name=split_name,
+                target_path=target_path
+            )
+            triples_list, text_list = _extract_text_triples_pairs(split_dataset)
+            nodes_list, edges_list, edge_indexes_list = _parse_triples(triples_list)
+            serialized_graphs_list = tokenizer.serialize_graphs(
+                nodes_list=nodes_list,
+                edges_list=edges_list,
+                edge_indexes_list=edge_indexes_list
+            )
+            if augment_bool:
+                text_list, serialized_graphs_list = _aggregate_duplicates(
+                    text_list,
+                    serialized_graphs_list
+                )
+            else:
+                text_list = [[text] for text in text_list]
+
+            text_token_ids = tokenizer.encode_grouped_text(text_list, add_special_tokens=True)
+            graph_token_ids = tokenizer.encode_grouped_text(
+                serialized_graphs_list,
+                add_special_tokens=False
+            )
+
+            with open(data_file_paths['raw_text'], 'w', encoding='utf-8') as f:
+                json.dump(text_list, f)
+
+            with open(data_file_paths['raw_graphs'], 'w', encoding='utf-8') as f:
+                json.dump(
+                    {'nodes': nodes_list, 'edges': edges_list, 'edge_indexes': edge_indexes_list},
+                    f
+                )
+            with open(data_file_paths['graphs_token_ids'], 'w', encoding='utf-8') as f:
+                json.dump(graph_token_ids, f)
+
+            with open(data_file_paths['text_token_ids'], 'w', encoding='utf-8') as f:
+                json.dump(text_token_ids, f)
 
 
 def _aggregate_duplicates(

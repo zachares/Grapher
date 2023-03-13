@@ -91,11 +91,10 @@ class GraphTokenizer():
 
     def batch_graphs_token_ids(
         self,
-        graphs_token_ids: List[List[List[int]]],
-        shuffle_edges: bool = False
+        graphs_token_ids: List[List[List[int]]]
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.batch_token_ids([
-            self._sequence_graph(graph_token_ids, shuffle_edges)
+            self._add_special_tokens(list(itertools.chain.from_iterable(graph_token_ids)))
             for graph_token_ids in graphs_token_ids
         ])
 
@@ -123,15 +122,6 @@ class GraphTokenizer():
                 ]))
             serialized_graphs.append(graph_text)
         return serialized_graphs
-
-    def _sequence_graph(
-        self,
-        edges_token_ids: List[List[int]],
-        shuffle_edges: bool
-    ) -> List[int]:
-        if shuffle_edges:
-            random.shuffle(edges_token_ids)
-        return self._add_special_tokens(list(itertools.chain.from_iterable(edges_token_ids)))
 
     def _add_special_tokens(self, token_ids: List[int]) -> List[int]:
         return [self.tokenizer.pad_token_id] + token_ids + [self.tokenizer.eos_token_id]
