@@ -2,7 +2,7 @@
 cd ../
 python main.py    --logging-dir /workspaces/code/neurips_code/logging/ \
                   --model-dir /workspaces/code/neurips_code/models/ \
-                  --model-name augmented_language_model_repeated\
+                  --model-name augmented_language_model\
                   --augment-data 0\
                   --load-model 1\
                   --version 2 \

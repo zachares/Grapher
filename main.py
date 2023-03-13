@@ -25,8 +25,7 @@ def main(args):
         tokenizer=tokenizer,
         source_path=args.data_path,
         target_path=args.output_path,
-        split_names=['train', 'dev', 'test'],
-        augment_data=args.augment_data
+        split_names=['train', 'dev', 'test']
     )
     model = init_and_load_model(
         tokenizer=tokenizer,
@@ -68,7 +67,7 @@ def main(args):
             save_weights_only=True,
             save_top_k=1,
             mode='max',
-            monitor='F1',
+            monitor='Graph Overlap',
             save_on_train_epoch_end=False,
             verbose=True
         )

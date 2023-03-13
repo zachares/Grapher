@@ -18,8 +18,7 @@ def prepareWebNLG(
     tokenizer: GraphTokenizer,
     source_path: str,
     target_path: str,
-    split_names: List[str],
-    augment_data: bool
+    split_names: List[str]
 ) -> None:
     """ Preprocesses and saves data set as a set of sequenced text graph pairs """
     for split_name in split_names:

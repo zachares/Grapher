@@ -3,12 +3,13 @@
 import itertools
 from typing import Dict, List, Tuple
 
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from transformers import PreTrainedModel
 
 from data.graph_tokenizer import GraphTokenizer
-from metrics import compute_scores
+from metrics import compute_scores, compute_graph_score
 
 
 class LitText2SerializedGraphLLM(pl.LightningModule):
@@ -108,6 +109,10 @@ class LitText2SerializedGraphLLM(pl.LightningModule):
             split_name=split_name,
             rank=rank
         )
+        scores.update(compute_graph_score(
+            graphs_generated=graphs_generated,
+            graphs_ground_truth=graphs_ground_truth
+        ))
         for k, v in scores.items():
             self.logger.experiment.add_scalar(f'{split_name}_score/{k}', v, global_step=iteration)
         self.log_dict(scores, prog_bar=True)

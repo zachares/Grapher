@@ -1,5 +1,7 @@
+from collections import defaultdict
 import json
 import os
+import random
 from typing import Dict, List
 
 import nltk
@@ -21,6 +23,8 @@ def compute_scores(
         batch of text graph pairs
     """
     refs = [[' | '.join(i) for i in t] for t in graphs_ground_truth]
+    random.shuffle(graphs_ground_truth)
+    hyps = [[' | '.join(i) for i in t] for t in graphs_ground_truth]
     hyps = [[' | '.join(i) for i in t] for t in graphs_generated]
     categories = [' '] * len(refs)
 
@@ -42,3 +46,32 @@ def compute_scores(
         'Recall': float(scores['Total_scores']['Exact']['Recall']),
         'F1': float(scores['Total_scores']['Exact']['F1'])
     }
+
+
+def compute_graph_score(
+    graphs_generated: List[List[str]],
+    graphs_ground_truth: List[List[str]]
+) -> Dict[str, float]:
+    """ Computes evaluation metrics for comparing the actual and estimated knowledge graphs for a
+        batch of text graph pairs
+    """
+    graph_overlap = []
+    for graph_gen, graph_gt in zip(graphs_generated, graphs_ground_truth):
+        total_edges_truth = len(graph_gen)
+        total_edges_generated = len(graph_gt)
+        correct_count = 0
+        edges = set()
+        edge_dict_gt = defaultdict(list)
+        for idx, edge in enumerate(graph_gt):
+            edge_dict_gt[tuple(edge)].append(idx)
+            edges.add(tuple(edge))
+        edge_dict_gen = defaultdict(list)
+        for idx, edge in enumerate(graph_gen):
+            edge_dict_gen[tuple(edge)].append(idx)
+            edges.add(tuple(edge))
+        for edge in list(edges):
+            correct_count += min(len(edge_dict_gen[edge]), len(edge_dict_gt[edge]))
+        assert correct_count <= total_edges_truth
+        assert correct_count <= total_edges_generated
+        graph_overlap.append(correct_count / max(total_edges_generated, total_edges_truth))
+    return {'Graph Overlap': sum(graph_overlap) / len(graph_overlap)}
